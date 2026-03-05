@@ -4,7 +4,7 @@ import { AppModule } from './app.module';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 
 function getAllowedOrigins(): string[] {
-  const raw = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+  const raw = (process.env.WEB_ORIGIN ?? 'http://localhost:3000').trim();
   return raw
     .split(',')
     .map((o) => o.trim())
@@ -12,8 +12,21 @@ function getAllowedOrigins(): string[] {
 }
 
 function toFullOrigin(origin: string): string {
-  if (/^https?:\/\//i.test(origin)) return origin.replace(/\/$/, '');
-  return `https://${origin}`;
+  const o = origin.trim();
+  if (!o) return 'http://localhost:3000';
+  if (/^https?:\/\//i.test(o)) return o.replace(/\/$/, '');
+  return `https://${o}`;
+}
+
+function isOriginAllowed(origin: string, allowedOrigins: string[], allowAny: boolean): boolean {
+  const normalized = origin.replace(/\/$/, '').trim().toLowerCase();
+  if (allowAny) return true;
+  return allowedOrigins.some((o) => {
+    const oNorm = o.replace(/\/$/, '').trim().toLowerCase();
+    if (oNorm === normalized) return true;
+    if (!/^https?:\/\//i.test(oNorm) && (normalized === `https://${oNorm}` || normalized === `http://${oNorm}`)) return true;
+    return false;
+  });
 }
 
 async function bootstrap() {
@@ -23,34 +36,17 @@ async function bootstrap() {
   const allowedOrigins = getAllowedOrigins();
   const allowAny = allowedOrigins.includes('*');
 
-  function isOriginAllowed(origin: string): boolean {
-    const normalized = origin.replace(/\/$/, '').toLowerCase();
-    if (allowAny) return true;
-    return allowedOrigins.some((o) => {
-      const oNorm = o.replace(/\/$/, '').toLowerCase();
-      if (oNorm === normalized) return true;
-      if (!/^https?:\/\//i.test(oNorm) && (normalized === `https://${oNorm}` || normalized === `http://${oNorm}`)) return true;
-      return false;
-    });
-  }
-
   app.enableCors({
     origin: (origin, callback) => {
-      // Proxy (ex.: Railway) pode remover o header Origin; usa o primeiro permitido como fallback
-      if (!origin) {
-        if (allowedOrigins.length > 0) {
-          return callback(null, toFullOrigin(allowedOrigins[0]));
-        }
-        return callback(null, true);
+      if (!origin || isOriginAllowed(origin, allowedOrigins, allowAny)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
       }
-      if (isOriginAllowed(origin)) {
-        return callback(null, origin);
-      }
-      callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
+    // Sem allowedHeaders restritivo: deixa o Nest usar os padrões e aceitar headers comuns do browser
   });
   console.log('CORS allowed origins:', allowedOrigins);
 

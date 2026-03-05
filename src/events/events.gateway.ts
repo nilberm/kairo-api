@@ -7,9 +7,20 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Server } from 'socket.io';
 
+function getSocketCorsOrigins(): string[] | true {
+  const raw = (process.env.WEB_ORIGIN ?? 'http://localhost:3000').trim();
+  if (!raw || raw === '*') return true;
+  return raw.split(',').map((o) => {
+    const t = o.trim();
+    if (/^https?:\/\//i.test(t)) return t.replace(/\/$/, '');
+    return `https://${t}`;
+  });
+}
+
 @WebSocketGateway({
   cors: {
-    origin: process.env.WEB_ORIGIN ?? true,
+    origin: getSocketCorsOrigins(),
+    credentials: true,
   },
   path: '/socket.io',
 })
