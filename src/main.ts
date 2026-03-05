@@ -22,7 +22,14 @@ async function bootstrap() {
       if (!origin) return callback(null, true);
       if (allowAny) return callback(null, true);
       const normalized = origin.replace(/\/$/, '');
-      const allowed = allowedOrigins.some((o) => o.replace(/\/$/, '') === normalized);
+      const allowed = allowedOrigins.some((o) => {
+        const oNorm = o.replace(/\/$/, '').toLowerCase();
+        const originNorm = normalized.toLowerCase();
+        if (oNorm === originNorm) return true;
+        // WEB_ORIGIN sem protocolo (ex.: kairo-app.netlify.app) deve bater com https:// e http://
+        if (!/^https?:\/\//i.test(oNorm) && (originNorm === `https://${oNorm}` || originNorm === `http://${oNorm}`)) return true;
+        return false;
+      });
       callback(null, allowed);
     },
     credentials: true,
