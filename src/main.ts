@@ -38,7 +38,11 @@ async function bootstrap() {
       const dataSource = app.get(DataSource);
       await dataSource.runMigrations();
       if (process.env.RUN_SEED_ON_STARTUP === 'true') {
-        await runSeedWithDataSource(dataSource);
+        try {
+          await runSeedWithDataSource(dataSource);
+        } catch (seedErr) {
+          console.error('Seed falhou (tabelas podem não existir ainda):', seedErr);
+        }
       }
     } catch (migrationErr) {
       console.error('Erro ao rodar migrations (a API sobe mesmo assim):', migrationErr);
