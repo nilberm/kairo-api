@@ -17,22 +17,31 @@ async function bootstrap() {
 
   const allowedOrigins = getAllowedOrigins();
   const allowAny = allowedOrigins.includes('*');
+
+  function isOriginAllowed(origin: string): boolean {
+    const normalized = origin.replace(/\/$/, '').toLowerCase();
+    if (allowAny) return true;
+    return allowedOrigins.some((o) => {
+      const oNorm = o.replace(/\/$/, '').toLowerCase();
+      if (oNorm === normalized) return true;
+      if (!/^https?:\/\//i.test(oNorm) && (normalized === `https://${oNorm}` || normalized === `http://${oNorm}`)) return true;
+      return false;
+    });
+  }
+
   app.enableCors({
     origin: (origin, callback) => {
+      // Requisições sem Origin (ex.: Postman, same-origin) são permitidas
       if (!origin) return callback(null, true);
-      if (allowAny) return callback(null, true);
-      const normalized = origin.replace(/\/$/, '');
-      const allowed = allowedOrigins.some((o) => {
-        const oNorm = o.replace(/\/$/, '').toLowerCase();
-        const originNorm = normalized.toLowerCase();
-        if (oNorm === originNorm) return true;
-        // WEB_ORIGIN sem protocolo (ex.: kairo-app.netlify.app) deve bater com https:// e http://
-        if (!/^https?:\/\//i.test(oNorm) && (originNorm === `https://${oNorm}` || originNorm === `http://${oNorm}`)) return true;
-        return false;
-      });
-      callback(null, allowed);
+      if (isOriginAllowed(origin)) {
+        // Com credentials: true é obrigatório devolver o origin exato no header
+        return callback(null, origin);
+      }
+      callback(null, false);
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
   });
   console.log('CORS allowed origins:', allowedOrigins);
 
