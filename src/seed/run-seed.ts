@@ -149,7 +149,10 @@ async function runSeedStandalone() {
   await ds.destroy();
 }
 
-runSeedStandalone().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Só executa o seed quando o arquivo é rodado direto (npm run seed), não quando importado por main.ts
+if (require.main === module) {
+  runSeedStandalone().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
