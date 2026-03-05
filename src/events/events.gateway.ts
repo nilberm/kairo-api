@@ -7,8 +7,16 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Server } from 'socket.io';
 
+function getSocketCorsOrigins(): string[] {
+  const raw = (process.env.WEB_ORIGIN ?? 'http://localhost:3000').trim();
+  return raw.split(',').map((o) => {
+    const t = o.trim().replace(/\/$/, '');
+    return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+  }).filter(Boolean);
+}
+
 @WebSocketGateway({
-  cors: { origin: true, credentials: true },
+  cors: { origin: getSocketCorsOrigins(), credentials: true },
   path: '/socket.io',
 })
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {

@@ -9,6 +9,7 @@ import { MediumTermGoal } from '../entities/medium-term-goal.entity';
 import { ShortTermGoal } from '../entities/short-term-goal.entity';
 import { Habit } from '../entities/habit.entity';
 import { HabitProgress } from '../entities/habit-progress.entity';
+import { getDbConfig } from '../db-config';
 import {
   SEED_VISION_GOALS,
   SEED_MEDIUM_GOALS,
@@ -20,29 +21,8 @@ import {
 
 const DEFAULT_USER_ID = process.env.DEFAULT_USER_ID ?? '00000000-0000-0000-0000-000000000001';
 
-async function runSeed() {
-  const ds = new DataSource({
-    type: 'postgres',
-    host: process.env.DB_HOST ?? 'localhost',
-    port: parseInt(process.env.DB_PORT ?? '5432', 10),
-    username: process.env.DB_USER ?? 'postgres',
-    password: process.env.DB_PASSWORD ?? 'postgres',
-    database: process.env.DB_NAME ?? 'kairo',
-    entities: [
-      User,
-      VisionGoal,
-      VisionGoalTransaction,
-      VisionValueEntry,
-      MediumTermGoal,
-      ShortTermGoal,
-      Habit,
-      HabitProgress,
-    ],
-    synchronize: false,
-  });
-
-  await ds.initialize();
-
+/** Usado pela API no startup (RUN_SEED_ON_STARTUP=true) ou pelo CLI. Não destrói o DataSource. */
+export async function runSeedWithDataSource(ds: DataSource): Promise<void> {
   // Garante que a coluna de senha existe (banco criado antes da auth)
   await ds.query(
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);`,
@@ -144,11 +124,32 @@ async function runSeed() {
     }
   }
 
-  await ds.destroy();
   console.log('Seed finished.');
 }
 
-runSeed().catch((e) => {
+/** Script standalone: npm run seed (usa DATABASE_URL ou DB_*). */
+async function runSeedStandalone() {
+  const config = getDbConfig();
+  const ds = new DataSource({
+    ...config,
+    entities: [
+      User,
+      VisionGoal,
+      VisionGoalTransaction,
+      VisionValueEntry,
+      MediumTermGoal,
+      ShortTermGoal,
+      Habit,
+      HabitProgress,
+    ],
+    synchronize: false,
+  });
+  await ds.initialize();
+  await runSeedWithDataSource(ds);
+  await ds.destroy();
+}
+
+runSeedStandalone().catch((e) => {
   console.error(e);
   process.exit(1);
 });
