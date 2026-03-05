@@ -12,12 +12,21 @@ async function bootstrap() {
   });
 
   if (process.env.NODE_ENV === 'production') {
-    const dataSource = app.get(DataSource);
-    await dataSource.runMigrations();
+    try {
+      const dataSource = app.get(DataSource);
+      await dataSource.runMigrations();
+    } catch (migrationErr) {
+      console.error('Erro ao rodar migrations (a API sobe mesmo assim):', migrationErr);
+      // Não derruba o processo; tabelas podem já existir ou você pode corrigir as migrations.
+    }
   }
 
   const port = process.env.PORT ?? 4000;
   await app.listen(port);
   console.log(`Kairo API running on http://localhost:${port}`);
 }
-bootstrap();
+
+bootstrap().catch((err) => {
+  console.error('Falha ao iniciar a API:', err);
+  process.exit(1);
+});
