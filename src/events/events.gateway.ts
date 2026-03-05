@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Server } from 'socket.io';
 
 function getSocketCorsOrigins(): string[] | true {
+  if (process.env.CORS_OPEN === 'true' || process.env.CORS_OPEN === '1') return true;
   const raw = (process.env.WEB_ORIGIN ?? 'http://localhost:3000').trim();
   if (!raw || raw === '*') return true;
   return raw.split(',').map((o) => {

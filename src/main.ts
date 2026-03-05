@@ -35,9 +35,10 @@ async function bootstrap() {
 
   const allowedOrigins = getAllowedOrigins();
   const allowAny = allowedOrigins.includes('*');
+  const corsOpen = process.env.CORS_OPEN === 'true' || process.env.CORS_OPEN === '1';
 
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: corsOpen ? true : (origin, callback) => {
       if (!origin || isOriginAllowed(origin, allowedOrigins, allowAny)) {
         callback(null, true);
       } else {
@@ -46,9 +47,8 @@ async function bootstrap() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    // Sem allowedHeaders restritivo: deixa o Nest usar os padrões e aceitar headers comuns do browser
   });
-  console.log('CORS allowed origins:', allowedOrigins);
+  console.log('CORS:', corsOpen ? 'OPEN (qualquer origem)' : 'allowed origins:', corsOpen ? '—' : allowedOrigins);
 
   if (process.env.NODE_ENV === 'production') {
     try {
