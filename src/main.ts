@@ -11,6 +11,11 @@ function getAllowedOrigins(): string[] {
     .filter(Boolean);
 }
 
+function toFullOrigin(origin: string): string {
+  if (/^https?:\/\//i.test(origin)) return origin.replace(/\/$/, '');
+  return `https://${origin}`;
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useWebSocketAdapter(new IoAdapter(app));
@@ -31,10 +36,14 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Requisições sem Origin (ex.: Postman, same-origin) são permitidas
-      if (!origin) return callback(null, true);
+      // Proxy (ex.: Railway) pode remover o header Origin; usa o primeiro permitido como fallback
+      if (!origin) {
+        if (allowedOrigins.length > 0) {
+          return callback(null, toFullOrigin(allowedOrigins[0]));
+        }
+        return callback(null, true);
+      }
       if (isOriginAllowed(origin)) {
-        // Com credentials: true é obrigatório devolver o origin exato no header
         return callback(null, origin);
       }
       callback(null, false);
