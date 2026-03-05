@@ -97,7 +97,7 @@ export class CreateAppTables1730660000000 implements MigrationInterface {
     `);
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "habit_progress" (
-        "id" uuid NOT NULL,
+        "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "habitId" varchar(36) NOT NULL,
         "periodKey" varchar(20) NOT NULL,
         "value" int NOT NULL DEFAULT 0,
@@ -106,9 +106,20 @@ export class CreateAppTables1730660000000 implements MigrationInterface {
         CONSTRAINT "FK_habit_progress_habit" FOREIGN KEY ("habitId") REFERENCES "habits"("id") ON DELETE CASCADE
       )
     `);
+    await queryRunner.query(`
+      CREATE TABLE IF NOT EXISTS "life_rpg_progression" (
+        "userId" uuid NOT NULL,
+        "pillar" varchar(20) NOT NULL,
+        "value" decimal(12,2) NOT NULL DEFAULT 0,
+        "updatedAt" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "PK_life_rpg_progression" PRIMARY KEY ("userId", "pillar"),
+        CONSTRAINT "FK_life_rpg_progression_user" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE
+      )
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE IF EXISTS "life_rpg_progression"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "habit_progress"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "vision_value_entries"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "vision_goal_transactions"`);
