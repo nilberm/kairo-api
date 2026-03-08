@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
+import { IsNull, LessThan, Not, Repository } from 'typeorm';
 import { TodoItem } from '../entities';
 import { EventsGateway } from '../events/events.gateway';
 
@@ -29,6 +29,30 @@ export class TodosService {
       completedAt: t.completedAt ? t.completedAt.toISOString() : null,
       createdAt: t.createdAt.toISOString(),
     }));
+  }
+
+  /** Itens não concluídos de dias anteriores que ainda aparecem nas sugestões. */
+  async listIncompletePast(userId: string, today: string): Promise<
+    { id: string; title: string; date: string }[]
+  > {
+    const list = await this.repo.find({
+      where: {
+        userId,
+        date: LessThan(today),
+        completedAt: IsNull(),
+        hiddenFromSuggestions: false,
+      },
+      order: { date: 'ASC', createdAt: 'ASC' },
+    });
+    return list.map((t) => ({ id: t.id, title: t.title, date: t.date }));
+  }
+
+  async setHiddenFromSuggestions(userId: string, id: string, hidden: boolean): Promise<void> {
+    const item = await this.repo.findOne({ where: { id, userId } });
+    if (!item) throw new NotFoundException('Item não encontrado.');
+    item.hiddenFromSuggestions = hidden;
+    await this.repo.save(item);
+    this.events.emitToUser(userId, 'data-update', { type: 'todos' });
   }
 
   async create(userId: string, title: string, date: string): Promise<{ id: string; title: string; date: string; completedAt: null; createdAt: string }> {

@@ -1,8 +1,25 @@
+import { randomUUID } from 'crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Habit, HabitProgress } from '../entities';
 import { EventsGateway } from '../events/events.gateway';
+
+export type CreateHabitDto = {
+  name: string;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  type: 'counter' | 'boolean' | 'time';
+  target?: number;
+  unit?: string | null;
+};
+
+export type UpdateHabitDto = {
+  name?: string;
+  frequency?: 'daily' | 'weekly' | 'monthly';
+  type?: 'counter' | 'boolean' | 'time';
+  target?: number;
+  unit?: string | null;
+};
 
 @Injectable()
 export class HabitsService {
@@ -27,6 +44,58 @@ export class HabitsService {
       target: h.target,
       unit: h.unit ?? undefined,
     }));
+  }
+
+  async create(userId: string, dto: CreateHabitDto) {
+    const name = (dto.name ?? '').trim();
+    if (!name) throw new NotFoundException('Nome do hábito não pode ser vazio.');
+    const frequency = dto.frequency ?? 'daily';
+    const type = dto.type ?? 'counter';
+    const target = Math.max(1, Math.floor(Number(dto.target) || 1));
+    const habit = await this.habitRepo.save({
+      id: randomUUID(),
+      userId,
+      name,
+      frequency,
+      type,
+      target,
+      unit: dto.unit ?? null,
+    });
+    this.events.emitToUser(userId, 'data-update', { type: 'habits' });
+    return {
+      id: habit.id,
+      name: habit.name,
+      frequency: habit.frequency,
+      type: habit.type,
+      target: habit.target,
+      unit: habit.unit ?? undefined,
+    };
+  }
+
+  async update(userId: string, id: string, dto: UpdateHabitDto) {
+    const habit = await this.habitRepo.findOne({ where: { id, userId } });
+    if (!habit) throw new NotFoundException('Hábito não encontrado.');
+    if (dto.name !== undefined) habit.name = (dto.name ?? '').trim() || habit.name;
+    if (dto.frequency !== undefined) habit.frequency = dto.frequency;
+    if (dto.type !== undefined) habit.type = dto.type;
+    if (dto.target !== undefined) habit.target = Math.max(1, Math.floor(Number(dto.target) || 1));
+    if (dto.unit !== undefined) habit.unit = dto.unit ?? null;
+    await this.habitRepo.save(habit);
+    this.events.emitToUser(userId, 'data-update', { type: 'habits' });
+    return {
+      id: habit.id,
+      name: habit.name,
+      frequency: habit.frequency,
+      type: habit.type,
+      target: habit.target,
+      unit: habit.unit ?? undefined,
+    };
+  }
+
+  async delete(userId: string, id: string): Promise<void> {
+    const result = await this.habitRepo.delete({ id, userId });
+    if (result.affected === 0) throw new NotFoundException('Hábito não encontrado.');
+    this.events.emitToUser(userId, 'data-update', { type: 'habits' });
   }
 
   async getProgress(userId: string, periodKey: string) {

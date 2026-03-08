@@ -23,6 +23,10 @@ export class TodoItem {
   @Column('timestamptz', { nullable: true })
   completedAt: Date | null;
 
+  /** Se true, não aparece nas sugestões (itens não concluídos de dias anteriores). */
+  @Column('boolean', { default: false })
+  hiddenFromSuggestions: boolean;
+
   @Column('timestamptz', { default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }

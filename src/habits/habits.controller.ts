@@ -1,8 +1,8 @@
-import { Controller, Get, Put, Body, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
-import { HabitsService } from './habits.service';
+import { CreateHabitDto, HabitsService, UpdateHabitDto } from './habits.service';
 
 /**
  * GET /habits/progress?periodKey=<chave>
@@ -23,6 +23,21 @@ export class HabitsController {
   @Get()
   getHabits(@CurrentUser() user: JwtUser) {
     return this.habits.getHabits(user.id);
+  }
+
+  @Post()
+  create(@CurrentUser() user: JwtUser, @Body() body: CreateHabitDto) {
+    return this.habits.create(user.id, body);
+  }
+
+  @Patch(':id')
+  update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() body: UpdateHabitDto) {
+    return this.habits.update(user.id, id, body);
+  }
+
+  @Delete(':id')
+  delete(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+    return this.habits.delete(user.id, id);
   }
 
   @Get('progress')

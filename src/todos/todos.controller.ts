@@ -20,6 +20,21 @@ export class TodosController {
     return this.todos.listByDate(user.id, d);
   }
 
+  /** Itens não concluídos de dias anteriores (para sugestões). */
+  @Get('incomplete-past')
+  listIncompletePast(@CurrentUser() user: JwtUser) {
+    return this.todos.listIncompletePast(user.id, todayKey());
+  }
+
+  @Patch(':id/hide-from-suggestions')
+  setHiddenFromSuggestions(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body('hidden') hidden: boolean,
+  ) {
+    return this.todos.setHiddenFromSuggestions(user.id, id, !!hidden);
+  }
+
   @Post()
   create(@CurrentUser() user: JwtUser, @Body('title') title: string, @Body('date') date?: string) {
     const d = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayKey();
