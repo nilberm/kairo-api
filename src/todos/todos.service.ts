@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, Not, Repository } from 'typeorm';
@@ -59,6 +60,7 @@ export class TodosService {
     const trimmed = title.trim();
     if (!trimmed) throw new NotFoundException('Título não pode ser vazio.');
     const item = await this.repo.save({
+      id: randomUUID(),
       userId,
       title: trimmed,
       date,
