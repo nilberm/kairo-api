@@ -29,6 +29,10 @@ export class Habit {
   @Column('varchar', { length: 50, nullable: true })
   unit: string | null;
 
+  /** Ordem dentro da mesma frequency (daily/weekly/monthly). Menor = primeiro. */
+  @Column('int', { default: 0 })
+  sortOrder: number;
+
   @OneToMany(() => HabitProgress, (p) => p.habit)
   progressRecords: HabitProgress[];
 }

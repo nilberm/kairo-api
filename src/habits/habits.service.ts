@@ -34,7 +34,7 @@ export class HabitsService {
   async getHabits(userId: string) {
     const list = await this.habitRepo.find({
       where: { userId },
-      order: { id: 'ASC' },
+      order: { frequency: 'ASC', sortOrder: 'ASC', id: 'ASC' },
     });
     return list.map((h) => ({
       id: h.id,
@@ -43,6 +43,7 @@ export class HabitsService {
       type: h.type,
       target: h.target,
       unit: h.unit ?? undefined,
+      sortOrder: h.sortOrder,
     }));
   }
 
@@ -52,6 +53,13 @@ export class HabitsService {
     const frequency = dto.frequency ?? 'daily';
     const type = dto.type ?? 'counter';
     const target = Math.max(1, Math.floor(Number(dto.target) || 1));
+    const maxOrder = await this.habitRepo
+      .createQueryBuilder('h')
+      .select('COALESCE(MAX(h.sortOrder), -1)', 'max')
+      .where('h.userId = :userId', { userId })
+      .andWhere('h.frequency = :frequency', { frequency })
+      .getRawOne<{ max: number }>()
+      .then((r) => (r?.max ?? -1) + 1);
     const habit = await this.habitRepo.save({
       id: randomUUID(),
       userId,
@@ -60,6 +68,7 @@ export class HabitsService {
       type,
       target,
       unit: dto.unit ?? null,
+      sortOrder: maxOrder,
     });
     this.events.emitToUser(userId, 'data-update', { type: 'habits' });
     return {
@@ -69,6 +78,7 @@ export class HabitsService {
       type: habit.type,
       target: habit.target,
       unit: habit.unit ?? undefined,
+      sortOrder: habit.sortOrder,
     };
   }
 
@@ -89,7 +99,30 @@ export class HabitsService {
       type: habit.type,
       target: habit.target,
       unit: habit.unit ?? undefined,
+      sortOrder: habit.sortOrder,
     };
+  }
+
+  async reorder(userId: string, frequency: 'daily' | 'weekly' | 'monthly', habitIds: string[]) {
+    if (!habitIds?.length) return this.getHabits(userId);
+    const habits = await this.habitRepo.find({
+      where: { userId, frequency },
+      order: { sortOrder: 'ASC', id: 'ASC' },
+    });
+    const idSet = new Set(habitIds);
+    const validIds = habits.filter((h) => idSet.has(h.id)).map((h) => h.id);
+    const orderedIds = habitIds.filter((id) => validIds.includes(id));
+    if (orderedIds.length === 0) return this.getHabits(userId);
+    const habitMap = new Map(habits.map((h) => [h.id, h]));
+    for (let i = 0; i < orderedIds.length; i++) {
+      const h = habitMap.get(orderedIds[i]);
+      if (h && h.sortOrder !== i) {
+        h.sortOrder = i;
+        await this.habitRepo.save(h);
+      }
+    }
+    this.events.emitToUser(userId, 'data-update', { type: 'habits' });
+    return this.getHabits(userId);
   }
 
   async delete(userId: string, id: string): Promise<void> {
@@ -167,6 +200,7 @@ export class HabitsService {
     const dailyHabits = await this.habitRepo.find({
       where: { userId, frequency: 'daily' },
       select: ['id', 'target'],
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
     const habitIds = dailyHabits.map((h) => h.id);
     const targets = new Map(dailyHabits.map((h) => [h.id, h.target]));
@@ -274,7 +308,7 @@ export class HabitsService {
 
     const habits = await this.habitRepo.find({
       where: { userId, frequency },
-      order: { id: 'ASC' },
+      order: { sortOrder: 'ASC', id: 'ASC' },
     });
     const habitIds = habits.map((h) => h.id);
     if (habitIds.length === 0) {
@@ -384,7 +418,10 @@ export class HabitsService {
     const weeklyKeys = this.getWeekKeysInMonth(y, m);
     const monthlyKeys = [month];
 
-    const habits = await this.habitRepo.find({ where: { userId }, order: { id: 'ASC' } });
+    const habits = await this.habitRepo.find({
+      where: { userId },
+      order: { frequency: 'ASC', sortOrder: 'ASC', id: 'ASC' },
+    });
     const dailyHabitIds = habits.filter((h) => h.frequency === 'daily').map((h) => h.id);
     const weeklyHabitIds = habits.filter((h) => h.frequency === 'weekly').map((h) => h.id);
     const monthlyHabitIds = habits.filter((h) => h.frequency === 'monthly').map((h) => h.id);

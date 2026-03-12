@@ -30,6 +30,15 @@ export class HabitsController {
     return this.habits.create(user.id, body);
   }
 
+  @Post('reorder')
+  reorder(
+    @CurrentUser() user: JwtUser,
+    @Body('frequency') frequency: 'daily' | 'weekly' | 'monthly',
+    @Body('habitIds') habitIds: string[],
+  ) {
+    return this.habits.reorder(user.id, frequency, Array.isArray(habitIds) ? habitIds : []);
+  }
+
   @Patch(':id')
   update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() body: UpdateHabitDto) {
     return this.habits.update(user.id, id, body);

@@ -11,3 +11,6 @@ export { LifeRpgProgression } from './life-rpg-progression.entity';
 export { LifeRpgCosmetic } from './life-rpg-cosmetic.entity';
 export { LifeRpgUserCosmetic } from './life-rpg-user-cosmetic.entity';
 export { LifeRpgEquipped } from './life-rpg-equipped.entity';
+export { Transaction } from './transaction.entity';
+export { TransactionGroup } from './transaction-group.entity';
+export { UserFinanceSettings } from './user-finance-settings.entity';

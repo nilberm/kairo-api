@@ -8,6 +8,7 @@ import { GoalsModule } from './goals/goals.module';
 import { HabitsModule } from './habits/habits.module';
 import { TodosModule } from './todos/todos.module';
 import { LifeRpgModule } from './life-rpg/life-rpg.module';
+import { FinancesModule } from './finances/finances.module';
 
 const db = getDbConfig();
 
@@ -27,6 +28,7 @@ const db = getDbConfig();
     HabitsModule,
     TodosModule,
     LifeRpgModule,
+    FinancesModule,
   ],
   controllers: [],
   providers: [],
