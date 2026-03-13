@@ -188,10 +188,11 @@ export class FinancesService {
   async getProjection(userId: string, months: number = 12): Promise<ProjectionResponseDto> {
     const settings = await this.settingsRepo.findOne({ where: { userId } });
     const asOf = settings?.balanceAsOfDate ?? new Date().toISOString().slice(0, 10);
-    let runningBalance = Number(settings?.balance ?? 0);
+    const initialBalance = Number(settings?.balance ?? 0);
 
     const start = new Date(asOf);
     const end = new Date(start.getFullYear(), start.getMonth() + months, 31);
+    const firstDayStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
 
     const transactions = await this.txRepo.find({
       where: { userId },
@@ -201,7 +202,7 @@ export class FinancesService {
     const byDate = new Map<string, { entrada: number; saida: number }>();
     for (const t of transactions) {
       const d = t.date;
-      if (d < asOf) continue;
+      if (d < firstDayStr) continue;
       const num = Number(t.amount);
       const entry = byDate.get(d) ?? { entrada: 0, saida: 0 };
       if (num > 0) entry.entrada += num;
@@ -212,6 +213,39 @@ export class FinancesService {
     const monthsOut: ProjectionMonthDto[] = [];
     const weekdays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
     let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    const allDays: { dateStr: string; entrada: number; saida: number; diario: number }[] = [];
+
+    while (cur <= end && monthsOut.length < months) {
+      const year = cur.getFullYear();
+      const month = cur.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const { entrada = 0, saida = 0 } = byDate.get(dateStr) ?? {};
+        const diario = entrada - saida;
+        allDays.push({ dateStr, entrada, saida, diario });
+      }
+      cur.setMonth(cur.getMonth() + 1);
+    }
+
+    const saldoByDate = new Map<string, number>();
+    let runningBalance = initialBalance;
+    for (const { dateStr, diario } of allDays) {
+      if (dateStr >= asOf) {
+        runningBalance += diario;
+        saldoByDate.set(dateStr, runningBalance);
+      }
+    }
+    for (let i = allDays.length - 1; i >= 0; i--) {
+      const { dateStr } = allDays[i];
+      if (dateStr < asOf) {
+        const nextDay = allDays[i + 1];
+        const nextSaldo = nextDay ? saldoByDate.get(nextDay.dateStr) ?? initialBalance : initialBalance;
+        saldoByDate.set(dateStr, nextDay ? nextSaldo - nextDay.diario : initialBalance);
+      }
+    }
+
+    cur = new Date(start.getFullYear(), start.getMonth(), 1);
     while (cur <= end && monthsOut.length < months) {
       const year = cur.getFullYear();
       const month = cur.getMonth();
@@ -220,9 +254,8 @@ export class FinancesService {
       const days: ProjectionDayDto[] = [];
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const { entrada = 0, saida = 0 } = byDate.get(dateStr) ?? {};
-        const diario = entrada - saida;
-        if (dateStr >= asOf) runningBalance += diario;
+        const { entrada = 0, saida = 0, diario } = allDays.find((x) => x.dateStr === dateStr) ?? { entrada: 0, saida: 0, diario: 0 };
+        const saldo = saldoByDate.get(dateStr) ?? initialBalance;
         const d = new Date(year, month, day);
         const dayLabel = `${String(day).padStart(2, '0')} ${weekdays[d.getDay()]}`;
         days.push({
@@ -231,7 +264,7 @@ export class FinancesService {
           entrada,
           saida,
           diario,
-          saldo: runningBalance,
+          saldo,
         });
       }
       monthsOut.push({ year, month: month + 1, label: monthLabel, days });
@@ -240,7 +273,7 @@ export class FinancesService {
 
     return {
       balanceAsOfDate: asOf,
-      initialBalance: Number(settings?.balance ?? 0),
+      initialBalance,
       months: monthsOut,
     };
   }
