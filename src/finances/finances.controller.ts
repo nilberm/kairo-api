@@ -140,4 +140,36 @@ export class FinancesController {
   ) {
     return this.finances.deleteVault(user.id, id);
   }
+
+  @Get('vaults/:id/history')
+  getVaultHistory(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Query('months') months?: string,
+  ) {
+    const n = Math.min(24, Math.max(1, parseInt(months ?? '12', 10) || 12));
+    return this.finances.getVaultHistory(user.id, id, n);
+  }
+
+  @Post('vaults/:id/movements')
+  createVaultMovement(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      kind: 'GUARDAR' | 'RESGATAR' | 'TRANSFER';
+      amount: number;
+      date?: string;
+      source?: 'planilha' | 'external';
+      targetVaultId?: string;
+    },
+  ) {
+    return this.finances.createVaultMovement(user.id, id, {
+      kind: body.kind,
+      amount: Number(body.amount),
+      date: body.date ?? new Date().toISOString().slice(0, 10),
+      source: body.source,
+      targetVaultId: body.targetVaultId,
+    });
+  }
 }

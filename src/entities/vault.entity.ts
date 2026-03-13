@@ -33,6 +33,22 @@ export class Vault {
   @Column('decimal', { precision: 18, scale: 2, default: 0 })
   balance: string;
 
+  /** Meta de valor para o cofre (ex.: 15000). */
+  @Column('decimal', { precision: 18, scale: 2, default: 0 })
+  goalAmount: string;
+
+  /** Instituição associada (ex.: "Nubank", "Tesouro Direto"). */
+  @Column('varchar', { length: 120, nullable: true })
+  institution: string | null;
+
+  /** Descrição do rendimento (ex.: "100% CDI", "IPCA + 6%"). */
+  @Column('varchar', { length: 120, nullable: true })
+  yieldLabel: string | null;
+
+  /** Data-meta amigável (ex.: "Jun 2026"). */
+  @Column('varchar', { length: 32, nullable: true })
+  targetDate: string | null;
+
   /**
    * Categoria opcional (ex.: 'reserva-emergencia', 'investimentos', 'viagem').
    */

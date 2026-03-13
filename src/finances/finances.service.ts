@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import {
@@ -6,6 +6,7 @@ import {
   TransactionGroup,
   UserFinanceSettings,
   Vault,
+  VaultMovement,
 } from '../entities';
 import type { TransactionGroupKind, TransactionGroupStatus } from '../entities/transaction-group.entity';
 import type { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -74,6 +75,8 @@ export class FinancesService {
     private settingsRepo: Repository<UserFinanceSettings>,
     @InjectRepository(Vault)
     private vaultRepo: Repository<Vault>,
+    @InjectRepository(VaultMovement)
+    private movementRepo: Repository<VaultMovement>,
     private dataSource: DataSource,
   ) {}
 
@@ -498,6 +501,10 @@ export class FinancesService {
       name: v.name,
       balance: Number(v.balance),
       categoryId: v.categoryId,
+      goalAmount: Number(v.goalAmount),
+      institution: v.institution,
+      yieldLabel: v.yieldLabel,
+      targetDate: v.targetDate,
     }));
   }
 
@@ -507,6 +514,10 @@ export class FinancesService {
       name: dto.name.trim(),
       balance: String(dto.balance ?? 0),
       categoryId: dto.categoryId ?? null,
+      goalAmount: String(dto.goalAmount ?? 0),
+      institution: dto.institution?.trim() || null,
+      yieldLabel: dto.yieldLabel?.trim() || null,
+      targetDate: dto.targetDate?.trim() || null,
     };
 
     let entity: Vault;
@@ -531,10 +542,181 @@ export class FinancesService {
       name: saved.name,
       balance: Number(saved.balance),
       categoryId: saved.categoryId,
+      goalAmount: Number(saved.goalAmount),
+      institution: saved.institution,
+      yieldLabel: saved.yieldLabel,
+      targetDate: saved.targetDate,
     };
   }
 
   async deleteVault(userId: string, id: string): Promise<void> {
     await this.vaultRepo.delete({ id, userId });
+  }
+
+  async getVaultHistory(userId: string, vaultId: string, months: number = 12): Promise<{ month: string; value: number }[]> {
+    const vault = await this.vaultRepo.findOne({ where: { id: vaultId, userId } });
+    if (!vault) throw new NotFoundException('Vault not found');
+
+    const n = Math.min(24, Math.max(1, months));
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth() - (n - 1), 1);
+
+    const movements = await this.movementRepo.find({
+      where: { userId, vaultId },
+      order: { date: 'ASC' },
+    });
+
+    const result: { month: string; value: number }[] = [];
+    let balance = 0;
+    let idx = 0;
+
+    for (let i = 0; i < n; i++) {
+      const d = new Date(from.getFullYear(), from.getMonth() + i + 1, 0);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+      while (idx < movements.length && movements[idx].date <= d.toISOString().slice(0, 10)) {
+        const m = movements[idx];
+        const amt = Number(m.amount);
+        balance += m.type === 'deposit' ? amt : -amt;
+        idx++;
+      }
+
+      result.push({ month: monthKey, value: balance });
+    }
+
+    return result;
+  }
+
+  async createVaultMovement(
+    userId: string,
+    vaultId: string,
+    dto: {
+      kind: 'GUARDAR' | 'RESGATAR' | 'TRANSFER';
+      amount: number;
+      date: string;
+      source?: 'planilha' | 'external';
+      targetVaultId?: string;
+    },
+  ): Promise<void> {
+    const amount = Math.abs(dto.amount);
+    if (!amount || Number.isNaN(amount)) {
+      throw new BadRequestException('Valor inválido');
+    }
+
+    const date = dto.date || new Date().toISOString().slice(0, 10);
+
+    if (dto.kind === 'TRANSFER') {
+      const targetId = dto.targetVaultId;
+      if (!targetId || targetId === vaultId) {
+        throw new BadRequestException('Transferência requer outro cofre');
+      }
+
+      await this.dataSource.transaction(async (manager) => {
+        // Retira do cofre origem
+        await manager.save(VaultMovement, {
+          userId,
+          vaultId,
+          date,
+          type: 'withdraw',
+          amount: String(amount),
+          source: 'vault',
+          linkedTransactionId: null,
+        });
+        // Adiciona no cofre destino
+        await manager.save(VaultMovement, {
+          userId,
+          vaultId: targetId,
+          date,
+          type: 'deposit',
+          amount: String(amount),
+          source: 'vault',
+          linkedTransactionId: null,
+        });
+
+        const from = await manager.findOne(Vault, { where: { id: vaultId, userId } });
+        const to = await manager.findOne(Vault, { where: { id: targetId, userId } });
+        if (!from || !to) throw new NotFoundException('Vault not found');
+        const fromBal = Number(from.balance) - amount;
+        if (fromBal < 0) throw new BadRequestException('Saldo insuficiente no cofre de origem');
+        from.balance = String(fromBal);
+        to.balance = String(Number(to.balance) + amount);
+        await manager.save(Vault, from);
+        await manager.save(Vault, to);
+      });
+      return;
+    }
+
+    if (dto.kind === 'GUARDAR') {
+      const source = dto.source ?? 'external';
+      await this.dataSource.transaction(async (manager) => {
+        let linkedTxId: string | null = null;
+
+        if (source === 'planilha') {
+          const tx = await manager.save(Transaction, {
+            userId,
+            description: `Transferência para cofre`,
+            amount: String(-amount),
+            date,
+            type: 'EXPENSE',
+            categoryId: null,
+            transactionGroupId: null,
+            installmentInfo: null,
+          });
+          linkedTxId = tx.id;
+        }
+
+        await manager.save(VaultMovement, {
+          userId,
+          vaultId,
+          date,
+          type: 'deposit',
+          amount: String(amount),
+          source,
+          linkedTransactionId: linkedTxId,
+        });
+
+        const vault = await manager.findOne(Vault, { where: { id: vaultId, userId } });
+        if (!vault) throw new NotFoundException('Vault not found');
+        vault.balance = String(Number(vault.balance) + amount);
+        await manager.save(Vault, vault);
+      });
+      return;
+    }
+
+    if (dto.kind === 'RESGATAR') {
+      await this.dataSource.transaction(async (manager) => {
+        const vault = await manager.findOne(Vault, { where: { id: vaultId, userId } });
+        if (!vault) throw new NotFoundException('Vault not found');
+        const current = Number(vault.balance);
+        if (current < amount) throw new BadRequestException('Saldo insuficiente no cofre');
+
+        const tx = await manager.save(Transaction, {
+          userId,
+          description: `Resgate de cofre`,
+          amount: String(amount),
+          date,
+          type: 'INCOME',
+          categoryId: null,
+          transactionGroupId: null,
+          installmentInfo: null,
+        });
+
+        await manager.save(VaultMovement, {
+          userId,
+          vaultId,
+          date,
+          type: 'withdraw',
+          amount: String(amount),
+          source: 'planilha',
+          linkedTransactionId: tx.id,
+        });
+
+        vault.balance = String(current - amount);
+        await manager.save(Vault, vault);
+      });
+      return;
+    }
+
+    throw new BadRequestException('Tipo de movimentação inválido');
   }
 }
