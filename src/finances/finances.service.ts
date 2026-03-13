@@ -44,6 +44,16 @@ export interface RenewalAlertDto {
   message: string;
 }
 
+/** Transação para listagem por dia (detalhes do dia). */
+export interface TransactionByDateDto {
+  id: string;
+  description: string;
+  amount: number;
+  date: string;
+  type: 'INCOME' | 'EXPENSE';
+  installmentInfo: string | null;
+}
+
 const RECURRING_MONTHS = 24;
 const RENEWAL_ALERT_DAYS = 30;
 
@@ -179,6 +189,24 @@ export class FinancesService {
       await manager.update(TransactionGroup, { id: group.id }, { recurrenceEndDate });
       return { transactionIds: ids };
     });
+  }
+
+  /**
+   * Transações de um dia (para exibir no modal de detalhes do dia).
+   */
+  async getTransactionsByDate(userId: string, date: string): Promise<TransactionByDateDto[]> {
+    const list = await this.txRepo.find({
+      where: { userId, date },
+      order: { createdAt: 'ASC' },
+    });
+    return list.map((t) => ({
+      id: t.id,
+      description: t.description,
+      amount: Number(t.amount),
+      date: t.date,
+      type: t.type,
+      installmentInfo: t.installmentInfo,
+    }));
   }
 
   /**

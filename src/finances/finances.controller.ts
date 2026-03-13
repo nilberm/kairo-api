@@ -20,6 +20,21 @@ export class FinancesController {
   constructor(private readonly finances: FinancesService) {}
 
   /**
+   * Transações de um dia (para o modal de detalhes do dia).
+   * Query: date (YYYY-MM-DD).
+   */
+  @Get('transactions')
+  getTransactionsByDate(
+    @CurrentUser() user: JwtUser,
+    @Query('date') date: string,
+  ) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return [];
+    }
+    return this.finances.getTransactionsByDate(user.id, date);
+  }
+
+  /**
    * Projeção de fluxo de caixa: meses com dias (entrada, saída, diário, saldo).
    * Query: months (default 12).
    */
