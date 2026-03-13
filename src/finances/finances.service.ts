@@ -92,9 +92,11 @@ export class FinancesService {
     throw new Error(`Unsupported kind: ${(dto as any).kind}`);
   }
 
-  /** Cria grupo + N parcelas no mesmo dia dos N meses seguintes. */
+  /** Cria grupo + N parcelas. Se startInstallment > 1, gera só da parcela startInstallment até N. */
   private async createInstallment(userId: string, dto: CreateTransactionDto): Promise<{ transactionIds: string[] }> {
     const n = Math.max(2, Math.min(120, dto.installments ?? 2));
+    const startParcel = Math.max(1, Math.min(n, dto.startInstallment ?? 1));
+    const count = n - startParcel + 1; // quantas parcelas gerar (ex.: start 2 de 5 → 4 parcelas)
     const totalAmount = dto.totalAmount ? dto.amount : dto.amount * n;
     const installmentValue = totalAmount / n;
     const amount = dto.type === 'EXPENSE' ? -Math.abs(installmentValue) : Math.abs(installmentValue);
@@ -109,8 +111,10 @@ export class FinancesService {
 
       const start = new Date(dto.date);
       const ids: string[] = [];
-      for (let i = 0; i < n; i++) {
-        const d = new Date(start.getFullYear(), start.getMonth() + i, start.getDate());
+      for (let i = 0; i < count; i++) {
+        const parcelIndex = startParcel + i; // 1-based (ex.: 2, 3, 4, 5)
+        const monthsOffset = (startParcel - 1) + i;
+        const d = new Date(start.getFullYear(), start.getMonth() + monthsOffset, start.getDate());
         const dateStr = d.toISOString().slice(0, 10);
         const tx = await manager.save(Transaction, {
           userId,
@@ -120,7 +124,7 @@ export class FinancesService {
           type: dto.type,
           categoryId: dto.categoryId ?? null,
           transactionGroupId: group.id,
-          installmentInfo: `${i + 1}/${n}`,
+          installmentInfo: `${parcelIndex}/${n}`,
         });
         ids.push(tx.id);
       }

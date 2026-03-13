@@ -26,8 +26,17 @@ export class CreateTransactionDto {
   /** Para kind = installment: true = amount é o total; false = amount é o valor de cada parcela. */
   totalAmount?: boolean;
 
+  /** Para kind = installment: parcela em que começa (1-based). Ex.: 1 = primeira; 2 = começa na 2ª. */
+  startInstallment?: number;
+
   /** Para kind = recurring: data fim (opcional). Se não informado, gera 24 meses. */
   recurringEndDate?: string; // YYYY-MM-DD
+
+  /** Para kind = recurring: total de meses (front pode usar para calcular recurringEndDate). */
+  recurringMonths?: number;
+
+  /** Para kind = recurring: mês em que começa (1-based). */
+  recurringStartMonth?: number;
 
   categoryId?: string | null;
 }

@@ -41,8 +41,8 @@ export class Transaction {
   @Column('varchar', { length: 20 })
   type: TransactionType;
 
-  /** Opcional; para agrupamentos/categorias futuros. */
-  @Column('uuid', { nullable: true })
+  /** Slug da categoria (ex.: "vendas", "salario", "alimentacao"). */
+  @Column('varchar', { length: 64, nullable: true })
   categoryId: string | null;
 
   /** Agrupa parcelas (2/10) ou recorrências (mesmo gasto/receita todo mês). */
