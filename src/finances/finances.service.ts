@@ -183,7 +183,7 @@ export class FinancesService {
 
   /**
    * Retorna a projeção para o frontend: meses com dias (entrada, saída, diário, saldo).
-   * Usa user_finance_settings.balance + balanceAsOfDate e aplica transações a partir dessa data.
+   * Saldo de cada dia = saldo inicial (primeiro dia do primeiro mês) + soma dos diários do início até esse dia.
    */
   async getProjection(userId: string, months: number = 12): Promise<ProjectionResponseDto> {
     const settings = await this.settingsRepo.findOne({ where: { userId } });
@@ -231,18 +231,8 @@ export class FinancesService {
     const saldoByDate = new Map<string, number>();
     let runningBalance = initialBalance;
     for (const { dateStr, diario } of allDays) {
-      if (dateStr >= asOf) {
-        runningBalance += diario;
-        saldoByDate.set(dateStr, runningBalance);
-      }
-    }
-    for (let i = allDays.length - 1; i >= 0; i--) {
-      const { dateStr } = allDays[i];
-      if (dateStr < asOf) {
-        const nextDay = allDays[i + 1];
-        const nextSaldo = nextDay ? saldoByDate.get(nextDay.dateStr) ?? initialBalance : initialBalance;
-        saldoByDate.set(dateStr, nextDay ? nextSaldo - nextDay.diario : initialBalance);
-      }
+      runningBalance += diario;
+      saldoByDate.set(dateStr, runningBalance);
     }
 
     cur = new Date(start.getFullYear(), start.getMonth(), 1);
@@ -254,7 +244,10 @@ export class FinancesService {
       const days: ProjectionDayDto[] = [];
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const { entrada = 0, saida = 0, diario } = allDays.find((x) => x.dateStr === dateStr) ?? { entrada: 0, saida: 0, diario: 0 };
+        const dayData = allDays.find((x) => x.dateStr === dateStr);
+        const entrada = dayData?.entrada ?? 0;
+        const saida = dayData?.saida ?? 0;
+        const diario = dayData?.diario ?? 0;
         const saldo = saldoByDate.get(dateStr) ?? initialBalance;
         const d = new Date(year, month, day);
         const dayLabel = `${String(day).padStart(2, '0')} ${weekdays[d.getDay()]}`;
