@@ -5,9 +5,11 @@ import {
   Transaction,
   TransactionGroup,
   UserFinanceSettings,
+  Vault,
 } from '../entities';
 import type { TransactionGroupKind, TransactionGroupStatus } from '../entities/transaction-group.entity';
 import type { CreateTransactionDto } from './dto/create-transaction.dto';
+import { VaultDto, UpsertVaultDto } from './dto/vault.dto';
 
 /** Um dia na projeção: entrada, saída, diário, saldo acumulado. */
 export interface ProjectionDayDto {
@@ -70,6 +72,8 @@ export class FinancesService {
     private groupRepo: Repository<TransactionGroup>,
     @InjectRepository(UserFinanceSettings)
     private settingsRepo: Repository<UserFinanceSettings>,
+    @InjectRepository(Vault)
+    private vaultRepo: Repository<Vault>,
     private dataSource: DataSource,
   ) {}
 
@@ -480,5 +484,57 @@ export class FinancesService {
       { userId, balance: String(balance), balanceAsOfDate: asOfDate },
       { conflictPaths: ['userId'] },
     );
+  }
+
+  // Cofres (vaults)
+
+  async listVaults(userId: string): Promise<VaultDto[]> {
+    const list = await this.vaultRepo.find({
+      where: { userId },
+      order: { createdAt: 'ASC' },
+    });
+    return list.map((v) => ({
+      id: v.id,
+      name: v.name,
+      balance: Number(v.balance),
+      categoryId: v.categoryId,
+    }));
+  }
+
+  async upsertVault(userId: string, id: string | null, dto: UpsertVaultDto): Promise<VaultDto> {
+    const payload: Partial<Vault> = {
+      userId,
+      name: dto.name.trim(),
+      balance: String(dto.balance ?? 0),
+      categoryId: dto.categoryId ?? null,
+    };
+
+    let entity: Vault;
+    if (id) {
+      const existing = await this.vaultRepo.findOne({
+        where: { id, userId },
+      });
+      if (!existing) {
+        // Cria se não existir (upsert).
+        entity = this.vaultRepo.create(payload);
+      } else {
+        Object.assign(existing, payload);
+        entity = existing;
+      }
+    } else {
+      entity = this.vaultRepo.create(payload);
+    }
+
+    const saved = await this.vaultRepo.save(entity);
+    return {
+      id: saved.id,
+      name: saved.name,
+      balance: Number(saved.balance),
+      categoryId: saved.categoryId,
+    };
+  }
+
+  async deleteVault(userId: string, id: string): Promise<void> {
+    await this.vaultRepo.delete({ id, userId });
   }
 }

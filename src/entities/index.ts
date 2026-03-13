@@ -14,3 +14,4 @@ export { LifeRpgEquipped } from './life-rpg-equipped.entity';
 export { Transaction } from './transaction.entity';
 export { TransactionGroup } from './transaction-group.entity';
 export { UserFinanceSettings } from './user-finance-settings.entity';
+export { Vault } from './vault.entity';

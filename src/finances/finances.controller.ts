@@ -14,6 +14,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { FinancesService } from './finances.service';
 import type { CreateTransactionDto } from './dto/create-transaction.dto';
+import { UpsertVaultDto } from './dto/vault.dto';
 
 @Controller('finances')
 @UseGuards(JwtAuthGuard)
@@ -106,5 +107,37 @@ export class FinancesController {
     @Body('asOfDate') asOfDate: string,
   ) {
     return this.finances.setBalance(user.id, Number(balance), asOfDate);
+  }
+
+  // Cofres (vaults)
+
+  @Get('vaults')
+  listVaults(@CurrentUser() user: JwtUser) {
+    return this.finances.listVaults(user.id);
+  }
+
+  @Post('vaults')
+  createVault(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpsertVaultDto,
+  ) {
+    return this.finances.upsertVault(user.id, null, dto);
+  }
+
+  @Patch('vaults/:id')
+  updateVault(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: UpsertVaultDto,
+  ) {
+    return this.finances.upsertVault(user.id, id, dto);
+  }
+
+  @Delete('vaults/:id')
+  deleteVault(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+  ) {
+    return this.finances.deleteVault(user.id, id);
   }
 }

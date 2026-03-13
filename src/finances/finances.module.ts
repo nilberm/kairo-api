@@ -4,6 +4,7 @@ import {
   Transaction,
   TransactionGroup,
   UserFinanceSettings,
+  Vault,
 } from '../entities';
 import { FinancesService } from './finances.service';
 import { FinancesController } from './finances.controller';
@@ -14,6 +15,7 @@ import { FinancesController } from './finances.controller';
       Transaction,
       TransactionGroup,
       UserFinanceSettings,
+      Vault,
     ]),
   ],
   controllers: [FinancesController],
