@@ -52,6 +52,10 @@ export interface TransactionByDateDto {
   date: string;
   type: 'INCOME' | 'EXPENSE';
   installmentInfo: string | null;
+  /** UUID do grupo (parcelado/recorrente) ou null se lançamento único. */
+  transactionGroupId: string | null;
+  /** 'unique' | 'installment' | 'recurring' — para decidir "excluir só este" vs "excluir este e futuros". */
+  kind: 'unique' | 'installment' | 'recurring';
 }
 
 const RECURRING_MONTHS = 24;
@@ -193,10 +197,12 @@ export class FinancesService {
 
   /**
    * Transações de um dia (para exibir no modal de detalhes do dia).
+   * Inclui transactionGroupId e kind para permitir "excluir só este" vs "excluir este e futuros".
    */
   async getTransactionsByDate(userId: string, date: string): Promise<TransactionByDateDto[]> {
     const list = await this.txRepo.find({
       where: { userId, date },
+      relations: ['transactionGroup'],
       order: { createdAt: 'ASC' },
     });
     return list.map((t) => ({
@@ -206,6 +212,8 @@ export class FinancesService {
       date: t.date,
       type: t.type,
       installmentInfo: t.installmentInfo,
+      transactionGroupId: t.transactionGroupId ?? null,
+      kind: t.transactionGroup ? (t.transactionGroup.kind as 'installment' | 'recurring') : 'unique',
     }));
   }
 
@@ -415,6 +423,55 @@ export class FinancesService {
       .andWhere('transactionGroupId = :groupId', { transactionGroupId })
       .andWhere('date >= :fromDate', { fromDate })
       .execute();
+  }
+
+  /**
+   * Exclui transação(ões).
+   * - scope = 'this': exclui apenas esta transação (única ou uma ocorrência de parcelado/recorrente).
+   * - scope = 'future': exclui esta transação e todas as futuras do mesmo grupo (só para installment/recurring).
+   */
+  async deleteTransaction(
+    userId: string,
+    transactionId: string,
+    scope: 'this' | 'future',
+  ): Promise<void> {
+    const tx = await this.txRepo.findOne({
+      where: { id: transactionId, userId },
+      relations: ['transactionGroup'],
+    });
+    if (!tx) return;
+
+    if (scope === 'this') {
+      await this.txRepo.delete({ id: transactionId, userId });
+      return;
+    }
+
+    const groupId = tx.transactionGroupId;
+    if (!groupId) {
+      await this.txRepo.delete({ id: transactionId, userId });
+      return;
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from(Transaction)
+        .where('userId = :userId', { userId })
+        .andWhere('transactionGroupId = :groupId', { groupId })
+        .andWhere('date >= :fromDate', { fromDate: tx.date })
+        .execute();
+
+      const group = tx.transactionGroup;
+      if (group?.kind === 'recurring' && group.recurrenceEndDate) {
+        const dayBefore = new Date(tx.date);
+        dayBefore.setDate(dayBefore.getDate() - 1);
+        const newEnd = dayBefore.toISOString().slice(0, 10);
+        if (newEnd < group.recurrenceEndDate) {
+          await manager.update(TransactionGroup, { id: groupId }, { recurrenceEndDate: newEnd });
+        }
+      }
+    });
   }
 
   /** Atualiza saldo de referência do usuário (para projeção). */

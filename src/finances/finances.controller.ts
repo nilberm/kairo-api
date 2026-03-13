@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -63,6 +64,20 @@ export class FinancesController {
     @Body() dto: CreateTransactionDto,
   ) {
     return this.finances.create(user.id, dto);
+  }
+
+  /**
+   * Exclui transação. Query: scope = 'this' (só esta) | 'future' (esta e futuras do grupo).
+   * Para parcelado/recorrente, o front pode perguntar ao usuário antes de chamar com scope='future'.
+   */
+  @Delete('transactions/:id')
+  deleteTransaction(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Query('scope') scope?: string,
+  ) {
+    const scopeVal = scope === 'future' ? 'future' : 'this';
+    return this.finances.deleteTransaction(user.id, id, scopeVal);
   }
 
   /** Renovar recorrência: gera mais 24 meses. */
