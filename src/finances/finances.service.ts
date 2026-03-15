@@ -39,6 +39,8 @@ export interface ProjectionResponseDto {
   currentAverageSpend: number;
   /** Quanto ainda pode gastar hoje de forma segura: (orçamento mês - já gasto) / dias restantes no mês. */
   safeToSpendToday: number;
+  /** Orçamento diário usado na previsão (dias hoje/futuro). Null = não definido. */
+  dailyBudgetUsed: number | null;
 }
 
 /** Alerta de recorrência prestes a acabar. */
@@ -348,6 +350,7 @@ export class FinancesService {
       months: monthsOut,
       currentAverageSpend,
       safeToSpendToday,
+      dailyBudgetUsed: settings?.dailyBudget != null ? Number(settings.dailyBudget) : null,
     };
   }
 
