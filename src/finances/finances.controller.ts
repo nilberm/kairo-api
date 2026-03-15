@@ -121,6 +121,20 @@ export class FinancesController {
     return this.finances.setBalance(user.id, Number(balance), asOfDate);
   }
 
+  /** Define orçamento diário e/ou mensal para gastos variáveis (projeção híbrida). Body: dailyBudget?, monthlyVariableBudget? */
+  @Patch('settings/budget')
+  setDailyBudget(
+    @CurrentUser() user: JwtUser,
+    @Body('dailyBudget') dailyBudget?: number,
+    @Body('monthlyVariableBudget') monthlyVariableBudget?: number,
+  ) {
+    return this.finances.setDailyBudget(
+      user.id,
+      dailyBudget !== undefined ? Number(dailyBudget) : undefined,
+      monthlyVariableBudget !== undefined ? Number(monthlyVariableBudget) : undefined,
+    );
+  }
+
   // Cofres (vaults)
 
   @Get('vaults')

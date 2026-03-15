@@ -35,6 +35,10 @@ export interface ProjectionResponseDto {
   balanceAsOfDate: string;
   initialBalance: number;
   months: ProjectionMonthDto[];
+  /** Média de gastos variáveis no mês atual até hoje (total gasto / dias já passados). */
+  currentAverageSpend: number;
+  /** Quanto ainda pode gastar hoje de forma segura: (orçamento mês - já gasto) / dias restantes no mês. */
+  safeToSpendToday: number;
 }
 
 /** Alerta de recorrência prestes a acabar. */
@@ -228,12 +232,19 @@ export class FinancesService {
 
   /**
    * Retorna a projeção para o frontend: meses com dias (entrada, saída, diário, saldo).
-   * Saldo de cada dia = saldo inicial (primeiro dia do primeiro mês) + soma dos diários do início até esse dia.
+   * Saldo de cada dia = saldo inicial + soma dos diários do início até esse dia.
+   * Projeção híbrida: no passado usa só transações reais; em hoje/futuro usa transações reais + dailyBudget.
    */
   async getProjection(userId: string, months: number = 12): Promise<ProjectionResponseDto> {
     const settings = await this.settingsRepo.findOne({ where: { userId } });
     const asOf = settings?.balanceAsOfDate ?? new Date().toISOString().slice(0, 10);
     const initialBalance = Number(settings?.balance ?? 0);
+    const dailyBudget = Number(settings?.dailyBudget ?? 0);
+    const monthlyVariableBudget = settings?.monthlyVariableBudget != null ? Number(settings.monthlyVariableBudget) : null;
+
+    // Hoje no fuso do servidor (YYYY-MM-DD) para comparar datas
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     const start = new Date(asOf);
     const end = new Date(start.getFullYear(), start.getMonth() + months, 31);
@@ -260,15 +271,17 @@ export class FinancesService {
     let cur = new Date(start.getFullYear(), start.getMonth(), 1);
     const allDays: { dateStr: string; entrada: number; saida: number; diario: number }[] = [];
 
+    // Monta cada dia: passado = só real; hoje/futuro = real + dailyBudget (projeção)
     while (cur <= end && monthsOut.length < months) {
       const year = cur.getFullYear();
       const month = cur.getMonth();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const { entrada = 0, saida = 0 } = byDate.get(dateStr) ?? {};
-        const diario = entrada - saida;
-        allDays.push({ dateStr, entrada, saida, diario });
+        const { entrada = 0, saida: saidaReal = 0 } = byDate.get(dateStr) ?? {};
+        const saidaProj = dateStr < todayStr ? saidaReal : saidaReal + dailyBudget;
+        const diario = entrada - saidaProj;
+        allDays.push({ dateStr, entrada, saida: saidaProj, diario });
       }
       cur.setMonth(cur.getMonth() + 1);
     }
@@ -279,6 +292,26 @@ export class FinancesService {
       runningBalance += diario;
       saldoByDate.set(dateStr, runningBalance);
     }
+
+    // KPIs do mês atual (mês de hoje)
+    const todayYear = now.getFullYear();
+    const todayMonth = now.getMonth() + 1;
+    const dayOfMonth = now.getDate();
+    const daysInCurrentMonth = new Date(todayYear, todayMonth, 0).getDate();
+    const currentMonthPrefix = `${todayYear}-${String(todayMonth).padStart(2, '0')}-`;
+    let totalRealSpentCurrentMonth = 0;
+    for (let day = 1; day <= daysInCurrentMonth; day++) {
+      const dateStr = `${currentMonthPrefix}${String(day).padStart(2, '0')}`;
+      const entry = byDate.get(dateStr);
+      if (entry) totalRealSpentCurrentMonth += entry.saida;
+    }
+    const daysPassed = dayOfMonth;
+    const daysRemaining = Math.max(0, daysInCurrentMonth - dayOfMonth + 1);
+    const monthlyBudget =
+      monthlyVariableBudget ?? dailyBudget * daysInCurrentMonth;
+    const currentAverageSpend = daysPassed > 0 ? totalRealSpentCurrentMonth / daysPassed : 0;
+    const safeToSpendToday =
+      daysRemaining > 0 ? (monthlyBudget - totalRealSpentCurrentMonth) / daysRemaining : 0;
 
     cur = new Date(start.getFullYear(), start.getMonth(), 1);
     while (cur <= end && monthsOut.length < months) {
@@ -313,6 +346,8 @@ export class FinancesService {
       balanceAsOfDate: asOf,
       initialBalance,
       months: monthsOut,
+      currentAverageSpend,
+      safeToSpendToday,
     };
   }
 
@@ -540,6 +575,32 @@ export class FinancesService {
     await this.settingsRepo.upsert(
       { userId, balance: String(balance), balanceAsOfDate: asOfDate },
       { conflictPaths: ['userId'] },
+    );
+  }
+
+  /** Atualiza orçamento diário e/ou mensal para gastos variáveis (projeção híbrida). undefined = não alterar. */
+  async setDailyBudget(
+    userId: string,
+    dailyBudget: number | null | undefined,
+    monthlyVariableBudget: number | null | undefined,
+  ): Promise<void> {
+    const existing = await this.settingsRepo.findOne({ where: { userId } });
+    if (existing) {
+      if (dailyBudget !== undefined) existing.dailyBudget = dailyBudget != null ? String(dailyBudget) : null;
+      if (monthlyVariableBudget !== undefined)
+        existing.monthlyVariableBudget = monthlyVariableBudget != null ? String(monthlyVariableBudget) : null;
+      await this.settingsRepo.save(existing);
+      return;
+    }
+    if (dailyBudget === undefined && monthlyVariableBudget === undefined) return;
+    await this.settingsRepo.save(
+      this.settingsRepo.create({
+        userId,
+        balance: '0',
+        balanceAsOfDate: new Date().toISOString().slice(0, 10),
+        dailyBudget: dailyBudget != null ? String(dailyBudget) : null,
+        monthlyVariableBudget: monthlyVariableBudget != null ? String(monthlyVariableBudget) : null,
+      }),
     );
   }
 
